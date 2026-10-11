@@ -1,0 +1,43 @@
+{
+  "name": "streamdeck-claude",
+  "version": "0.2.0",
+  "description": "Stream Deck Mini → Claude approval bridge. A broker daemon owns the port; per-session MCP servers connect as clients and expose a request_approval tool resolved by a physical button press.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "streamdeck-claude": "dist/index.js",
+    "streamdeck-broker": "dist/broker.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "stream-deck",
+    "elgato",
+    "approval"
+  ],
+  "author": "Claire Donald",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cla1redonald/streamdeck-claude.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.7"
+  }
+}
