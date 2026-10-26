@@ -1,6 +1,6 @@
 # Design notes
 
-Why the project is built the way it is. For setup and day-to-day use, see the README.
+These notes explain why the project is built the way it is. For setup and day-to-day use, see the README.
 
 ## Two separate approval channels
 
@@ -31,7 +31,7 @@ A few of these need explaining.
 
 ## Why a broker
 
-Claude Code starts one MCP server process for each session, and they all run the same code at the same time. In the first version, each MCP server bound port 7777 to hear the button press. With several sessions open, one server got the port and the rest failed with `EADDRINUSE`. The button then reached whichever session happened to win that race, which was often not the one you were looking at, and sessions that crashed could leave orphaned processes holding the port.
+Claude Code starts one MCP server process for each session, and they all run the same code at the same time. In the first version, each MCP server bound port 7777 to hear the button press. With several sessions open, one server got the port and the rest failed with `EADDRINUSE`. The button then reached whichever session happened to win that race, not the one you were looking at, and sessions that crashed could leave orphaned processes holding the port.
 
 A server that starts with each session can't own something only one process can hold at a time, whether that is a port, a socket, a lock file or a device. That has to belong to a single long-lived process. So the project is split in two.
 
@@ -42,7 +42,7 @@ The original test suite started a single MCP server, and it passed. The bug only
 
 ## Queue semantics
 
-A physical button can't choose between requests, so a press always acts on the oldest request still pending, the head of the queue. The queue is there to put requests from several sessions in order, one behind another. It never offers the button a choice. `GET /status` shows the head, so you can check what a press will act on.
+A physical button can't choose between requests, so a press always acts on the oldest request still pending, the head of the queue. The queue is there to put requests from several sessions in order, one behind another. `GET /status` shows the head, so you can check what a press will act on.
 
 - Every request ends as `approved`, `denied` or `timeout`. A timeout means nobody answered, and the model should treat that differently from a refusal.
 - If a session disconnects while waiting, its request is cancelled so it cannot block the queue.

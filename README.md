@@ -2,7 +2,7 @@
 
 Approve or deny a Claude tool call with a physical Stream Deck button.
 
-When Claude Code needs your permission it stops and waits, and you have to go and find the right window to answer it. This project puts Approve and Deny on a Stream Deck instead, so you can answer from the desk and carry on with what you were doing. It only runs on macOS.
+When Claude Code needs your permission it stops and waits, and you have to go and find the right window to answer it. This project puts Approve and Deny on a Stream Deck instead, so you answer with one press and carry on with what you were doing. It only runs on macOS.
 
 The tricky part is having more than one Claude session open. If each session listened for the button itself, a press would go to whichever session grabbed the port first. So one background process, the broker, owns the port, and each Claude session runs a small MCP server that does nothing but talk to the broker. Requests from every session wait in a single queue. A press always answers the oldest one still waiting, whichever session it came from, and `/status` shows you which one that is.
 
@@ -47,7 +47,7 @@ Start a fresh Claude session and ask it to call `request_approval` before pushin
 
 A photo of the layout is still to come.
 
-- Approve answers Claude Code's own permission prompt. It is a Stream Deck Multi-Action that runs System > Open on your terminal app and then System > Hotkey with `Return`. It only works if **Elgato Stream Deck** is enabled under System Settings > Privacy & Security > Accessibility, and without that it [fails silently](docs/design-notes.md#two-separate-approval-channels).
+- Approve answers Claude Code's own permission prompt. It is a Stream Deck Multi-Action that runs System > Open on your terminal app and then System > Hotkey with `Return`. **Elgato Stream Deck** must be enabled under System Settings > Privacy & Security > Accessibility, or it [fails silently](docs/design-notes.md#two-separate-approval-channels).
 - The slash-command keys end with a trailing space. The space closes the autocomplete menu before Enter, so the command you typed is the one that runs.
 - Clearing can't be undone, so the Clear key types the command and leaves you to press Enter.
 - `/handoff` is a custom command. Swap in whatever you run often.
