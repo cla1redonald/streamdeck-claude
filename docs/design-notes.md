@@ -1,66 +1,66 @@
 # Design notes
 
-Background on why the project is shaped the way it is. For setup and usage, see the README.
+Why the project is built the way it is. For setup and day-to-day use, see the README.
 
 ## Two separate approval channels
 
-There are two different things a button can approve, and they do not share a mechanism.
+A button can approve two different things, and they work in completely different ways.
 
-1. **The `request_approval` MCP tool.** Claude calls the tool, the call blocks, and a button press on the broker (`POST /approve` or `POST /deny`) resolves it. This is fully under this project's control.
-2. **Claude Code's own terminal permission prompt** ("Do you want to proceed?"). The broker cannot answer this. The button has to send a keystroke to the terminal instead.
+1. The `request_approval` MCP tool. Claude calls it, and the call blocks until a button press reaches the broker (`POST /approve` or `POST /deny`). This project controls every step of that.
+2. Claude Code's own permission prompt in the terminal ("Do you want to proceed?"). The broker has no way to answer it, so the button has to send a keystroke to the terminal instead.
 
-For the second channel the working approach is a Stream Deck **Multi-Action**: first **System > Open** your terminal application so it has focus, then **System > Hotkey** sending `Return` (or `Escape` to reject). This relies on the Stream Deck app's own Accessibility permission, so make sure **Elgato Stream Deck** is enabled under System Settings > Privacy & Security > Accessibility. If it is missing from that list, the key press does nothing and gives no error.
+For the terminal prompt, what works is a Stream Deck **Multi-Action**. Its first step is **System > Open** on your terminal application, which gives the terminal focus. Its second is **System > Hotkey** sending `Return`, or `Escape` to reject. The whole thing relies on the Stream Deck app's own Accessibility permission, so check that **Elgato Stream Deck** is enabled under System Settings > Privacy & Security > Accessibility. If it is missing from that list, the key press does nothing and shows no error.
 
-One approach that does not work: a small AppleScript app built with `osacompile` that sends the keystroke. Its ad-hoc code signature changes on every rebuild, so macOS drops its Accessibility grant each time and the keystroke fails silently. Use the Stream Deck app's own hotkey action instead.
+A small AppleScript app built with `osacompile` to send the keystroke does not work. Its ad-hoc code signature changes every time it is rebuilt, so macOS drops its Accessibility grant each time and the keystroke fails without any error. Use the Stream Deck app's own hotkey action instead.
 
 ## Final button layout
 
-The Stream Deck Mini has six keys. The layout was picked from how often each action is used in real Claude Code sessions, so the most frequent action sits in the most prominent position.
+The Stream Deck Mini has six keys. They are laid out by how often each action comes up in real Claude Code sessions, with the most frequent one in the most prominent spot.
 
 | | Column 1 | Column 2 | Column 3 |
 |---|---|---|---|
-| Row 1 | **Stop**: hotkey `Escape` | **Approve**: Multi-Action (open terminal, then `Return`) | **Auto**: hotkey `Shift+Tab` (cycles the permission mode) |
-| Row 2 | **Compact**: text `/compact ` | **Handoff**: text `/handoff ` | **Clear**: text `/clear`, no Enter |
+| Row 1 | **Stop** is a hotkey for `Escape` | **Approve** is a Multi-Action that opens the terminal, then sends `Return` | **Auto** is a hotkey for `Shift+Tab`, which cycles the permission mode |
+| Row 2 | **Compact** types the text `/compact ` | **Handoff** types the text `/handoff ` | **Clear** types the text `/clear` without pressing Enter |
 
-Notes on the details:
+A few of these need explaining.
 
-- **Slash-command keys end with a trailing space.** Stream Deck's automatic Enter can fire before Claude Code's slash-command autocomplete menu has settled, and the wrong command runs. A trailing space closes the menu first, so Enter then submits what you typed.
-- **Clear types the command but does not press Enter.** It is destructive, so you confirm it yourself.
-- **Handoff is an example.** `/handoff` is a custom command. Replace it with any command you run often.
-- Keys that send keystrokes only do something useful when the terminal (or Claude Desktop) has focus. The Approve Multi-Action focuses the terminal itself. The broker's HTTP endpoints work regardless of focus.
+- The slash-command keys end with a trailing space. Stream Deck's automatic Enter can fire before Claude Code's autocomplete menu has settled, and then the wrong command runs. The space closes the menu first, so Enter submits what you typed.
+- Clear types the command but doesn't press Enter. Clearing can't be undone, so you confirm it yourself.
+- `/handoff` is a custom command and only an example. Put any command you run often in its place.
+- Keys that send keystrokes only help when the terminal, or Claude Desktop, has focus. The Approve Multi-Action gives the terminal focus itself, and the broker's HTTP endpoints work whatever has focus.
 
 ## Why a broker
 
-Claude Code starts one MCP server process per session, and every one runs the same code at the same time. The first version had each MCP server bind port 7777 to receive the button press. With several sessions open, one server won the port and the rest failed with `EADDRINUSE`. The button then reached whichever session happened to win the race, not the one you were looking at, and crashed sessions could leave orphaned processes holding the port.
+Claude Code starts one MCP server process for each session, and they all run the same code at the same time. In the first version, each MCP server bound port 7777 to hear the button press. With several sessions open, one server got the port and the rest failed with `EADDRINUSE`. The button then reached whichever session happened to win that race, which was often not the one you were looking at, and sessions that crashed could leave orphaned processes holding the port.
 
-The general rule: **a per-session server cannot own a singleton resource.** Anything exclusive (a port, a socket, a lock file, a device) belongs to a single long-lived process. So the project is split in two:
+A server that starts with each session can't own something only one process can hold at a time, whether that is a port, a socket, a lock file or a device. That has to belong to a single long-lived process. So the project is split in two.
 
-- A **broker daemon**, managed by launchd, owns `127.0.0.1:7777` and the approval queue.
-- Each session's **MCP server is a pure client**. It binds nothing, posts to the broker and long-polls for the answer. If the broker is down it returns a clear error instead of hanging.
+- A broker daemon, run by launchd, owns `127.0.0.1:7777` and the approval queue.
+- Each session's MCP server is only a client. It binds nothing, posts to the broker and long-polls for the answer, and if the broker is down it returns a clear error instead of hanging.
 
-The original test suite started one MCP server and passed. The failure only existed with several running at once, which is a useful reminder to test the concurrency model you actually deploy.
+The original test suite started a single MCP server, and it passed. The bug only appeared with several servers running at once, which is how the project is really used, so that is the case the tests have to cover.
 
 ## Queue semantics
 
-A physical button cannot choose between requests, so the queue always presents one well-defined target: the oldest pending request (the head). The queue exists to serialise requests from several sessions, not to give the button several targets. `GET /status` shows the head so you can see what a press will act on.
+A physical button can't choose between requests, so a press always acts on the oldest request still pending, the head of the queue. The queue is there to put requests from several sessions in order, one behind another. It never offers the button a choice. `GET /status` shows the head, so you can check what a press will act on.
 
-- The outcome is a three-state enum: `approved`, `denied` or `timeout`. A timeout means nobody answered, which is different from a refusal, and the model should treat it that way.
+- Every request ends as `approved`, `denied` or `timeout`. A timeout means nobody answered, and the model should treat that differently from a refusal.
 - If a session disconnects while waiting, its request is cancelled so it cannot block the queue.
 - Resolved outcomes are kept for 30 seconds so that a button press landing between `/enqueue` and `/wait/:id` is not lost.
 
 ## Implementation details worth knowing
 
-- **`node:http`, not `fetch`, for the long-poll.** Node's `fetch` aborts a request whose response headers have not arrived within about five minutes. The `/wait` call can legitimately last up to an hour, so the MCP server uses `http.request`, and the broker sets `requestTimeout` and `headersTimeout` to 0.
-- **Timers are `unref()`ed.** Otherwise a pending five-minute approval timeout keeps the process alive after `SIGTERM`.
-- **One shutdown path.** The MCP server shuts down on transport close, plus signals. Adding a second handler "for safety" (for example on stdin end) fires in situations you did not model.
-- **Every request path writes a response.** Cancelling a request wakes its waiters, and the body-size guard replies with 413 before destroying the socket. Otherwise long-poll responses are stranded and can block shutdown.
-- **A single source of truth for the tool schema.** The tool input is defined once with zod. A hand-written JSON Schema alongside a zod validator drifts over time.
+- The long-poll uses `node:http` rather than `fetch`. Node's `fetch` gives up on a request if the response headers haven't arrived within about five minutes, and a `/wait` call can legitimately last up to an hour. So the MCP server uses `http.request`, and the broker sets `requestTimeout` and `headersTimeout` to 0.
+- Timers are `unref()`ed, because otherwise a pending five-minute approval timeout keeps the process alive after `SIGTERM`.
+- The MCP server has one shutdown path. It shuts down when the transport closes, or on a signal. A second handler added "for safety", for example on stdin end, fires in situations nobody planned for.
+- Every request path writes a response. Cancelling a request wakes whoever is waiting on it, and the body-size guard replies with 413 before it destroys the socket. Without that, long-poll responses get stranded and can block shutdown.
+- The tool input is defined once, with zod. A hand-written JSON Schema kept next to a zod validator drifts out of step over time.
 
 ## Security notes
 
-The broker listens on loopback only, but "local" is not the same as "trusted":
+The broker only listens on loopback. Without further checks, that still leaves two ways for something else to approve a request.
 
 - Any process on the machine can call `/approve`.
 - A web page open in your browser can send a cross-site `POST` to `http://127.0.0.1:7777/approve` without needing to read the response (a "simple" request with no CORS preflight), or can use DNS rebinding to make the browser treat the broker as same-origin.
 
-The broker therefore checks that the `Host` header is `127.0.0.1:<port>` or `localhost:<port>` (defeats DNS rebinding) and rejects any request carrying an `Origin` header (browsers always send one on cross-site `POST`s, while the MCP server and `curl` do not). An optional shared secret, sent in the `x-broker-secret` header, additionally stops other local processes from approving or enqueuing. See the README for what is and is not protected.
+So the broker checks that the `Host` header is `127.0.0.1:<port>` or `localhost:<port>`, which defeats DNS rebinding. It also rejects any request that carries an `Origin` header. Browsers always send one on cross-site `POST`s, and the MCP server and `curl` don't. An optional shared secret, sent in the `x-broker-secret` header, also stops other local processes from approving or enqueuing. The README sets out what is protected and what is not.
